@@ -310,8 +310,8 @@ class TradingBotEngine:
                 total_runs = 0
                 for ema_w in range(strategy_ranges['ema_window_min'], strategy_ranges['ema_window_max'] + 1, strategy_ranges['ema_window_step']):
                     for rsi_w in range(strategy_ranges['rsi_window_min'], strategy_ranges['rsi_window_max'] + 1, strategy_ranges['rsi_window_step']):
-                        rsi_ob_level = self.config['trend_following_ranges']['rsi_overbought_level']
-                        rsi_os_level = self.config['trend_following_ranges']['rsi_oversold_level']
+                        rsi_ob_level = strategy_ranges['rsi_overbought_level']
+                        rsi_os_level = strategy_ranges['rsi_oversold_level']
                         for macd_f in range(strategy_ranges['macd_fast_min'], strategy_ranges['macd_fast_max'] + 1, strategy_ranges['macd_fast_step']):
                             for macd_s in range(strategy_ranges['macd_slow_min'], strategy_ranges['macd_slow_max'] + 1, strategy_ranges['macd_slow_step']):
                                 if macd_f >= macd_s:
