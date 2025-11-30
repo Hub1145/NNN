@@ -1,6 +1,6 @@
 {
   "active_strategy": "Trend Following",
-  "api_token": "381klIwm4Mr8BTT",
+  "api_token": "381klIwm4Mr8BTTa",
   "symbol": "R_100",
   "granularity": 60,
   "optimization_data_days": 20,
