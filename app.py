@@ -102,6 +102,7 @@ def handle_disconnect():
 @socketio.on('start_bot')
 def handle_start_bot():
     global bot_engine
+    print("--- DEBUG: handle_start_bot called ---", flush=True)
     
     try:
         config = load_config() # This is line 111
