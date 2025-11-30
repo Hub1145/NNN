@@ -82,13 +82,13 @@ class TradingBotEngine:
                 self.session_stats['max_win_streak'], 
                 self.session_stats['current_win_streak']
             )
-        else:
+        elif profit < 0:
             self.session_stats['trades_lost'] += 1
             self.session_stats['total_loss'] += abs(profit)
             self.session_stats['current_loss_streak'] += 1
             self.session_stats['current_win_streak'] = 0
             self.session_stats['max_loss_streak'] = max(
-                self.session_stats['max_loss_streak'], 
+                self.session_stats['max_loss_streak'],
                 self.session_stats['current_loss_streak']
             )
         
@@ -310,8 +310,8 @@ class TradingBotEngine:
                 total_runs = 0
                 for ema_w in range(strategy_ranges['ema_window_min'], strategy_ranges['ema_window_max'] + 1, strategy_ranges['ema_window_step']):
                     for rsi_w in range(strategy_ranges['rsi_window_min'], strategy_ranges['rsi_window_max'] + 1, strategy_ranges['rsi_window_step']):
-                        rsi_ob_level = self.config['trend_following_ranges']['rsi_overbought_level']
-                        rsi_os_level = self.config['trend_following_ranges']['rsi_oversold_level']
+                        rsi_ob_level = strategy_ranges['rsi_overbought_level']
+                        rsi_os_level = strategy_ranges['rsi_oversold_level']
                         for macd_f in range(strategy_ranges['macd_fast_min'], strategy_ranges['macd_fast_max'] + 1, strategy_ranges['macd_fast_step']):
                             for macd_s in range(strategy_ranges['macd_slow_min'], strategy_ranges['macd_slow_max'] + 1, strategy_ranges['macd_slow_step']):
                                 if macd_f >= macd_s:
@@ -505,10 +505,10 @@ class TradingBotEngine:
         while i < len(df) - 1:
             signal = df.iloc[i]['Signal']
             if signal != 0:
-                base_stake = self.config['fixed_stake_amount'] if self.config['use_fixed_stake_amount'] else (self.config['start_balance_backtest'] * (self.config['trade_stake_percent'] / 100)) # Changed 'balance' to 'self.config['start_balance_backtest']'
+                base_stake = self.config['fixed_stake_amount'] if self.config['use_fixed_stake_amount'] else (balance * (self.config['trade_stake_percent'] / 100))
                 stake = (bt_last_stake * self.config['martingale_multiplier']) if (self.config['use_martingale'] and bt_last_trade_loss) else base_stake
                 
-                if stake > balance or stake < 0.35: # 'balance' here still refers to the current simulated balance for comparison
+                if stake > balance or stake < 0.35:
                     i += 1
                     continue
                 
@@ -547,8 +547,6 @@ class TradingBotEngine:
                     if signal == 1: # BUY trade
                         if candle['high'] >= tp_price:
                             pnl = (tp_price - entry_price) / entry_price * stake * self.config['multiplier']
-                            balance += pnl
-                            total_profit += pnl
                             trades_won += 1
                             bt_last_trade_loss = False
                             current_win_streak += 1
@@ -558,8 +556,6 @@ class TradingBotEngine:
                             break
                         if candle['low'] <= sl_price:
                             pnl = (sl_price - entry_price) / entry_price * stake * self.config['multiplier']
-                            balance += pnl # pnl is negative here
-                            total_loss += abs(pnl)
                             trades_lost += 1
                             bt_last_trade_loss = True
                             current_loss_streak += 1
@@ -570,8 +566,6 @@ class TradingBotEngine:
                     else: # SELL trade
                         if candle['low'] <= tp_price:
                             pnl = (entry_price - tp_price) / entry_price * stake * self.config['multiplier']
-                            balance += pnl
-                            total_profit += pnl
                             trades_won += 1
                             bt_last_trade_loss = False
                             current_win_streak += 1
@@ -581,8 +575,6 @@ class TradingBotEngine:
                             break
                         if candle['high'] >= sl_price:
                             pnl = (entry_price - sl_price) / entry_price * stake * self.config['multiplier']
-                            balance += pnl # pnl is negative here
-                            total_loss += abs(pnl)
                             trades_lost += 1
                             bt_last_trade_loss = True
                             current_loss_streak += 1
@@ -597,7 +589,7 @@ class TradingBotEngine:
                         
                         if pnl > 0:
                             total_profit += pnl
-                        else:
+                        elif pnl < 0:
                             total_loss += abs(pnl)
                         
                         balance += pnl
@@ -625,6 +617,12 @@ class TradingBotEngine:
                     'reason': trade_closed_reason
                 }
                 detailed_trade_logs.append(trade_close_log)
+
+                balance += pnl
+                if pnl > 0:
+                    total_profit += pnl
+                elif pnl < 0:
+                    total_loss += abs(pnl)
 
                 i = j + 1
                 bt_last_stake = stake
