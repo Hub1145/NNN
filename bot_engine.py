@@ -320,8 +320,8 @@ class TradingBotEngine:
                 current_run = 0
                 for ema_w in range(strategy_ranges['ema_window_min'], strategy_ranges['ema_window_max'] + 1, strategy_ranges['ema_window_step']):
                     for rsi_w in range(strategy_ranges['rsi_window_min'], strategy_ranges['rsi_window_max'] + 1, strategy_ranges['rsi_window_step']):
-                        rsi_ob_level = strategy_ranges['rsi_overbought_level']
-                        rsi_os_level = strategy_ranges['rsi_oversold_level']
+                        rsi_ob_level = strategy_ranges.get('rsi_overbought_level', 70)
+                        rsi_os_level = strategy_ranges.get('rsi_oversold_level', 30)
                         for macd_f in range(strategy_ranges['macd_fast_min'], strategy_ranges['macd_fast_max'] + 1, strategy_ranges['macd_fast_step']):
                             for macd_s in range(strategy_ranges['macd_slow_min'], strategy_ranges['macd_slow_max'] + 1, strategy_ranges['macd_slow_step']):
                                 if macd_f >= macd_s:
@@ -1154,6 +1154,7 @@ class DerivHistoricalDataFetcher:
         self._data_received = True
     
     def _on_close(self, ws, close_status_code, close_msg):
+        self.log(f"WebSocket closed: {close_status_code} {close_msg}")
         self._data_received = True
     
     def _on_open(self, ws):
@@ -1224,4 +1225,3 @@ class DerivHistoricalDataFetcher:
             return pd.DataFrame()
         
         return pd.concat(all_dfs).drop_duplicates().sort_index()
- 
