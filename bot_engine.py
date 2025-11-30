@@ -82,7 +82,7 @@ class TradingBotEngine:
                 self.session_stats['max_win_streak'], 
                 self.session_stats['current_win_streak']
             )
-        else:
+        elif profit < 0:
             self.session_stats['trades_lost'] += 1
             self.session_stats['total_loss'] += abs(profit)
             self.session_stats['current_loss_streak'] += 1
@@ -310,8 +310,6 @@ class TradingBotEngine:
                 total_runs = 0
                 for ema_w in range(strategy_ranges['ema_window_min'], strategy_ranges['ema_window_max'] + 1, strategy_ranges['ema_window_step']):
                     for rsi_w in range(strategy_ranges['rsi_window_min'], strategy_ranges['rsi_window_max'] + 1, strategy_ranges['rsi_window_step']):
-                        rsi_ob_level = self.config['trend_following_ranges']['rsi_overbought_level']
-                        rsi_os_level = self.config['trend_following_ranges']['rsi_oversold_level']
                         for macd_f in range(strategy_ranges['macd_fast_min'], strategy_ranges['macd_fast_max'] + 1, strategy_ranges['macd_fast_step']):
                             for macd_s in range(strategy_ranges['macd_slow_min'], strategy_ranges['macd_slow_max'] + 1, strategy_ranges['macd_slow_step']):
                                 if macd_f >= macd_s:
@@ -322,7 +320,6 @@ class TradingBotEngine:
                 current_run = 0
                 for ema_w in range(strategy_ranges['ema_window_min'], strategy_ranges['ema_window_max'] + 1, strategy_ranges['ema_window_step']):
                     for rsi_w in range(strategy_ranges['rsi_window_min'], strategy_ranges['rsi_window_max'] + 1, strategy_ranges['rsi_window_step']):
-                        # RSI overbought/oversold are fixed, not optimized
                         rsi_ob_level = strategy_ranges['rsi_overbought_level']
                         rsi_os_level = strategy_ranges['rsi_oversold_level']
                         for macd_f in range(strategy_ranges['macd_fast_min'], strategy_ranges['macd_fast_max'] + 1, strategy_ranges['macd_fast_step']):
@@ -505,7 +502,7 @@ class TradingBotEngine:
         while i < len(df) - 1:
             signal = df.iloc[i]['Signal']
             if signal != 0:
-                base_stake = self.config['fixed_stake_amount'] if self.config['use_fixed_stake_amount'] else (self.config['start_balance_backtest'] * (self.config['trade_stake_percent'] / 100)) # Changed 'balance' to 'self.config['start_balance_backtest']'
+                base_stake = self.config['fixed_stake_amount'] if self.config['use_fixed_stake_amount'] else (balance * (self.config['trade_stake_percent'] / 100))
                 stake = (bt_last_stake * self.config['martingale_multiplier']) if (self.config['use_martingale'] and bt_last_trade_loss) else base_stake
                 
                 if stake > balance or stake < 0.35: # 'balance' here still refers to the current simulated balance for comparison
@@ -607,7 +604,7 @@ class TradingBotEngine:
                             bt_last_trade_loss = True
                             current_loss_streak += 1
                             current_win_streak = 0
-                        else:
+                        elif pnl > 0:
                             trades_won += 1
                             bt_last_trade_loss = False
                             current_win_streak += 1
