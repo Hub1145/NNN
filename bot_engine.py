@@ -542,9 +542,11 @@ class TradingBotEngine:
                     exit_time = candle.name.strftime('%Y-%m-%d %H:%M:%S')
                     exit_price = 0.0 # Will be actual exit price
 
+                    # PnL is calculated based on stake; multiplier is excluded here because
+                    # the stake amount would already account for it in a live environment.
                     if signal == 1: # BUY trade
                         if candle['high'] >= tp_price:
-                            pnl = (tp_price - entry_price) / entry_price * stake * self.config['multiplier']
+                            pnl = (tp_price - entry_price) / entry_price * stake
                             balance += pnl
                             total_profit += pnl
                             trades_won += 1
@@ -555,7 +557,7 @@ class TradingBotEngine:
                             exit_price = tp_price
                             break
                         if candle['low'] <= sl_price:
-                            pnl = (sl_price - entry_price) / entry_price * stake * self.config['multiplier']
+                            pnl = (sl_price - entry_price) / entry_price * stake
                             balance += pnl # pnl is negative here
                             total_loss += abs(pnl)
                             trades_lost += 1
@@ -567,7 +569,7 @@ class TradingBotEngine:
                             break
                     else: # SELL trade
                         if candle['low'] <= tp_price:
-                            pnl = (entry_price - tp_price) / entry_price * stake * self.config['multiplier']
+                            pnl = (entry_price - tp_price) / entry_price * stake
                             balance += pnl
                             total_profit += pnl
                             trades_won += 1
@@ -578,7 +580,7 @@ class TradingBotEngine:
                             exit_price = tp_price
                             break
                         if candle['high'] >= sl_price:
-                            pnl = (entry_price - sl_price) / entry_price * stake * self.config['multiplier']
+                            pnl = (entry_price - sl_price) / entry_price * stake
                             balance += pnl # pnl is negative here
                             total_loss += abs(pnl)
                             trades_lost += 1
@@ -591,7 +593,7 @@ class TradingBotEngine:
                     
                     if candle['Signal'] == -signal: # Reversal signal, close trade
                         close_price = candle['open']
-                        pnl = (close_price - entry_price) / entry_price * stake * self.config['multiplier'] * signal
+                        pnl = (close_price - entry_price) / entry_price * stake * signal
                         
                         if pnl > 0:
                             total_profit += pnl
@@ -610,6 +612,9 @@ class TradingBotEngine:
                             bt_last_trade_loss = False
                             current_win_streak += 1
                             current_loss_streak = 0
+                        else: # Break-even trades
+                            bt_last_trade_loss = False
+
                         trade_closed_reason = 'REVERSAL'
                         exit_price = close_price
                         break
