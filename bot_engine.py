@@ -199,7 +199,8 @@ class TradingBotEngine:
             self.log("="*50 + f"\nBACKGROUND OPTIMIZATION for past {self.config['optimization_data_days']} days STARTED for {self.config['active_strategy']} strategy, symbol {self.config['symbol']}, granularity {self.config['granularity']}...\n" + "="*50, 'info')
             fetcher = DerivHistoricalDataFetcher(
                 symbol=self.config['symbol'],
-                url=self.config['ws_url']
+                url=self.config['ws_url'],
+                log_callback=self.log # Pass the log method
             )
             
             df_hist = fetcher.fetch_data_for_days(
@@ -1133,9 +1134,10 @@ class TradingBotEngine:
 
 
 class DerivHistoricalDataFetcher:
-    def __init__(self, symbol, url):
+    def __init__(self, symbol, url, log_callback):
         self.symbol = symbol
         self.url = url
+        self.log = log_callback # Assign the log callback
         self._data_received = False
         self._received_candles = []
         self._ws = None
@@ -1154,7 +1156,7 @@ class DerivHistoricalDataFetcher:
         self._data_received = True
     
     def _on_close(self, ws, close_status_code, close_msg):
-        self.log(f"WebSocket closed: {close_status_code} {close_msg}")
+        self.log(f"WebSocket closed: {close_status_code} {close_msg}", 'info')
         self._data_received = True
     
     def _on_open(self, ws):
