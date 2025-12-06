@@ -1141,11 +1141,13 @@ class DerivHistoricalDataFetcher:
         self._data_received = False
         self._received_candles = []
         self._ws = None
+        self._api_error_occurred = False # New flag to track API errors
     
     def _on_message(self, ws, message):
         data = json.loads(message)
         if 'error' in data:
-            logging.error(f"Deriv API Error: {data['error']['message']}")
+            self.log(f"Deriv API Error: {data['error']['message']}", 'error')
+            self._api_error_occurred = True
         elif 'candles' in data:
             self._received_candles = data['candles']
         self._data_received = True
@@ -1178,7 +1180,7 @@ class DerivHistoricalDataFetcher:
         
         self._ws.run_forever()
         
-        if not self._received_candles:
+        if self._api_error_occurred or not self._received_candles:
             return pd.DataFrame()
         
         df = pd.DataFrame(self._received_candles)
@@ -1212,15 +1214,20 @@ class DerivHistoricalDataFetcher:
             
             df_batch = self._fetch_batch(json.dumps(request))
             
+            # If an API error occurred in _fetch_batch, return empty DataFrame immediately
+            if self._api_error_occurred:
+                self.log("API error occurred during historical data fetch. Aborting.", 'error')
+                return pd.DataFrame()
+
             if df_batch.empty:
-                logging.warning("No more data received.")
+                self.log("No more data received for this batch.", 'warning')
                 break
             
             all_dfs.append(df_batch)
             total_candles_needed -= len(df_batch)
             end_time = int(df_batch.index.min().timestamp()) - 1
             
-            logging.info(f"Fetched {len(df_batch)} candles. Remaining: {total_candles_needed}")
+            self.log(f"Fetched {len(df_batch)} candles. Remaining: {total_candles_needed}", 'info')
             time.sleep(0.2)
         
         if not all_dfs:
