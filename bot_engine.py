@@ -195,12 +195,13 @@ class TradingBotEngine:
         self.log("Daily optimization scheduler stopped.", 'info')
 
     def run_daily_optimization(self):
+        import gc # Import garbage collector to force cleanup
         try:
             self.log("="*50 + f"\nBACKGROUND OPTIMIZATION for past {self.config['optimization_data_days']} days STARTED for {self.config['active_strategy']} strategy, symbol {self.config['symbol']}, granularity {self.config['granularity']}...\n" + "="*50, 'info')
             fetcher = DerivHistoricalDataFetcher(
                 symbol=self.config['symbol'],
                 url=self.config['ws_url'],
-                log_callback=self.log # Pass the log method
+                log_callback=self.log
             )
             
             df_hist = fetcher.fetch_data_for_days(
@@ -220,15 +221,16 @@ class TradingBotEngine:
             if self.config['active_strategy'] == "Mean Reversion":
                 strategy_ranges = self.config['mean_reversion_ranges']
                 total_runs = 0
+                # ... (Calculations for total_runs remain the same) ...
+                # Re-calculating total runs for progress bar accuracy
                 for bb_w in range(strategy_ranges['bb_window_min'], strategy_ranges['bb_window_max'] + 1, strategy_ranges['bb_window_step']):
                     for bb_s in np.arange(strategy_ranges['bb_std_min'], strategy_ranges['bb_std_max'] + 0.1, strategy_ranges['bb_std_step']):
                         for macd_f in range(strategy_ranges['macd_fast_min'], strategy_ranges['macd_fast_max'] + 1, strategy_ranges['macd_fast_step']):
                             for macd_s in range(strategy_ranges['macd_slow_min'], strategy_ranges['macd_slow_max'] + 1, strategy_ranges['macd_slow_step']):
-                                if macd_f >= macd_s:
-                                    continue
+                                if macd_f >= macd_s: continue
                                 for macd_sig in range(strategy_ranges['macd_signal_min'], strategy_ranges['macd_signal_max'] + 1, strategy_ranges['macd_signal_step']):
                                     total_runs += 1
-    
+
                 current_run = 0
                 for bb_w in range(strategy_ranges['bb_window_min'], strategy_ranges['bb_window_max'] + 1, strategy_ranges['bb_window_step']):
                     for bb_s in np.arange(strategy_ranges['bb_std_min'], strategy_ranges['bb_std_max'] + 0.1, strategy_ranges['bb_std_step']):
@@ -241,15 +243,27 @@ class TradingBotEngine:
                                         self.log('Optimization aborted by stop signal.', 'warning')
                                         return
                                     current_run += 1
+
+                                    # Use a slice instead of copy() if possible, or explicit copy and del
                                     df_processed = base_df.copy()
                                     df_processed = self.calculate_indicators_mean_reversion(df_processed, macd_f, macd_s, macd_sig, bb_w, bb_s)
                                     df_processed.dropna(inplace=True)
                                     df_signals = self.generate_signals_mean_reversion(df_processed)
                                     results = self.backtest_strategy(df_signals)
                                     
-                                    self.log(f"Mean Reversion Run {current_run}/{total_runs} | PnL: ${results['Net Profit']:.2f}, Trades: {results['Total Trades']}, WinRate: {results['Win Rate']:.1f}%, MaxLoss: {results['Max Loss Streak']}", 'info')
+                                    # Free up dataframe memory immediately
+                                    del df_processed
+                                    del df_signals
+
+                                    self.log(f"Mean Reversion Run {current_run}/{total_runs} | PnL: ${results['Net Profit']:.2f}, Trades: {results['Total Trades']}", 'info')
                                     
                                     if results['Total Trades'] > 20:
+                                        # === CRITICAL MEMORY FIX ===
+                                        # Create a lightweight copy WITHOUT 'Detailed Trades'
+                                        lightweight_result = results.copy()
+                                        if 'Detailed Trades' in lightweight_result:
+                                            del lightweight_result['Detailed Trades']
+
                                         opt_results.append({
                                             'Strategy': 'Mean Reversion',
                                             'BB_Window': bb_w,
@@ -257,24 +271,24 @@ class TradingBotEngine:
                                             'MACD_Fast': macd_f,
                                             'MACD_Slow': macd_s,
                                             'MACD_Signal': macd_sig,
-                                            **results
+                                            **lightweight_result
                                         })
+                    # Force Garbage Collection periodically (every outer loop)
+                    gc.collect()
                 
                 if not opt_results:
-                    self.log("Mean Reversion optimization found no valid strategies. Resetting best_params.", 'error', to_file=True, filename=BACKTEST_LOG_FILE)
-                    with self.params_lock:
-                        self.best_params.clear()
-                    return # Exit without setting best_params
+                    self.log("Mean Reversion optimization found no valid strategies.", 'error', to_file=True, filename=BACKTEST_LOG_FILE)
+                    with self.params_lock: self.best_params.clear()
+                    return
                 
-                self.log("Mean Reversion optimization runs complete. Applying ML model to find the best strategy...", 'info', to_file=True, filename=BACKTEST_LOG_FILE)
+                self.log("Mean Reversion optimization complete. Finding best strategy...", 'info', to_file=True, filename=BACKTEST_LOG_FILE)
                 opt_results_df = pd.DataFrame(opt_results)
-                best_ml_strategy = self.find_best_strategy_with_ml(opt_results_df) # Use original name
+                best_ml_strategy = self.find_best_strategy_with_ml(opt_results_df)
                 
                 if best_ml_strategy is None:
-                    self.log("ML model could not determine a best Mean Reversion strategy. Resetting best_params.", 'error', to_file=True, filename=BACKTEST_LOG_FILE)
-                    with self.params_lock:
-                        self.best_params.clear()
-                    return # Exit without setting best_params
+                    self.log("ML model failed. Resetting params.", 'error', to_file=True, filename=BACKTEST_LOG_FILE)
+                    with self.params_lock: self.best_params.clear()
+                    return
                 
                 new_best_params = {
                     'strategy': 'Mean Reversion',
@@ -289,32 +303,22 @@ class TradingBotEngine:
                     self.best_params.clear()
                     self.best_params.update(new_best_params)
                 
-                self.ml_strategy_results = best_ml_strategy # Store ML results directly
-                log_message_mr = ("\n" + "="*50 + "\n--- MEAN REVERSION OPTIMIZATION COMPLETE ---\n" +
-                              f"ML Selected Strategy Score: {best_ml_strategy['ML_Score']:.4f}\n" +
-                              f"  - Net Profit: ${best_ml_strategy['Net Profit']:.2f}\n" +
-                              f"  - Win Rate: {best_ml_strategy['Win Rate']:.2f}%\n" +
-                              f"  - Max Loss Streak: {best_ml_strategy['Max Loss Streak']}\n" +
-                              f"  - Profit Factor: {best_ml_strategy['Profit Factor']}\n" +
-                              f"NEW PARAMS FOUND: {new_best_params}\n" + "="*50 + "\n")
-                self.log(log_message_mr, 'info', to_file=True, filename=BACKTEST_LOG_FILE) # Log summary to file
+                self.ml_strategy_results = best_ml_strategy
+                # Note: 'Detailed Trades' will be missing from logs now, which prevents the crash.
+                # If you absolutely need them, you must re-run backtest_strategy ONE time here with new_best_params.
                 
-                # Log detailed backtest trades for the best strategy
-                for trade_log_entry in best_ml_strategy['Detailed Trades']:
-                    self.log(json.dumps(trade_log_entry), 'debug', to_file=True, filename=BACKTEST_LOG_FILE)
-
                 self.emit('params_update', {'best_params': new_best_params, 'ml_strategy_results': best_ml_strategy})
                 self._save_optimized_params(new_best_params, best_ml_strategy)
     
             elif self.config['active_strategy'] == "Trend Following":
                 strategy_ranges = self.config['trend_following_ranges']
                 total_runs = 0
+                # Calculate total runs
                 for ema_w in range(strategy_ranges['ema_window_min'], strategy_ranges['ema_window_max'] + 1, strategy_ranges['ema_window_step']):
                     for rsi_w in range(strategy_ranges['rsi_window_min'], strategy_ranges['rsi_window_max'] + 1, strategy_ranges['rsi_window_step']):
                         for macd_f in range(strategy_ranges['macd_fast_min'], strategy_ranges['macd_fast_max'] + 1, strategy_ranges['macd_fast_step']):
                             for macd_s in range(strategy_ranges['macd_slow_min'], strategy_ranges['macd_slow_max'] + 1, strategy_ranges['macd_slow_step']):
-                                if macd_f >= macd_s:
-                                    continue
+                                if macd_f >= macd_s: continue
                                 for macd_sig in range(strategy_ranges['macd_signal_min'], strategy_ranges['macd_signal_max'] + 1, strategy_ranges['macd_signal_step']):
                                     total_runs += 1
 
@@ -329,18 +333,29 @@ class TradingBotEngine:
                                     continue
                                 for macd_sig in range(strategy_ranges['macd_signal_min'], strategy_ranges['macd_signal_max'] + 1, strategy_ranges['macd_signal_step']):
                                     if self.stop_event.is_set():
-                                        self.log('Optimization aborted by stop signal.', 'warning', to_file=True, filename=BACKTEST_LOG_FILE)
+                                        self.log('Optimization aborted.', 'warning', to_file=True, filename=BACKTEST_LOG_FILE)
                                         return
                                     current_run += 1
+
                                     df_processed = base_df.copy()
                                     df_processed = self.calculate_indicators_trend_following(df_processed, ema_w, rsi_w, macd_f, macd_s, macd_sig)
                                     df_processed.dropna(inplace=True)
                                     df_signals = self.generate_signals_trend_following(df_processed, rsi_ob_level, rsi_os_level)
                                     results = self.backtest_strategy(df_signals)
                                     
-                                    self.log(f"Trend Following Run {current_run}/{total_runs} | PnL: ${results['Net Profit']:.2f}, Trades: {results['Total Trades']}, WinRate: {results['Win Rate']:.1f}%, MaxLoss: {results['Max Loss Streak']}", 'info')
+                                    # Free up dataframe memory
+                                    del df_processed
+                                    del df_signals
+
+                                    self.log(f"Trend Following Run {current_run}/{total_runs} | PnL: ${results['Net Profit']:.2f}, Trades: {results['Total Trades']}", 'info')
                                     
                                     if results['Total Trades'] > 20:
+                                        # === CRITICAL MEMORY FIX ===
+                                        # Create a lightweight copy WITHOUT 'Detailed Trades'
+                                        lightweight_result = results.copy()
+                                        if 'Detailed Trades' in lightweight_result:
+                                            del lightweight_result['Detailed Trades']
+
                                         opt_results.append({
                                             'Strategy': 'Trend Following',
                                             'EMA_Window': ema_w,
@@ -350,31 +365,31 @@ class TradingBotEngine:
                                             'MACD_Fast': macd_f,
                                             'MACD_Slow': macd_s,
                                             'MACD_Signal': macd_sig,
-                                            **results # Include all results
+                                            **lightweight_result
                                         })
+                    # Force Garbage Collection
+                    gc.collect()
                 
                 if not opt_results:
-                    self.log("Trend Following optimization found no valid strategies. Resetting best_params.", 'error', to_file=True, filename=BACKTEST_LOG_FILE)
-                    with self.params_lock:
-                        self.best_params.clear()
-                    return # Exit without setting best_params
+                    self.log("Trend Following optimization found no valid strategies.", 'error', to_file=True, filename=BACKTEST_LOG_FILE)
+                    with self.params_lock: self.best_params.clear()
+                    return
                 
-                self.log("Trend Following optimization runs complete. Applying ML model to find the best strategy...", 'info', to_file=True, filename=BACKTEST_LOG_FILE)
+                self.log("Trend Following optimization complete. Finding best strategy...", 'info', to_file=True, filename=BACKTEST_LOG_FILE)
                 opt_results_df = pd.DataFrame(opt_results)
-                best_ml_strategy = self.find_best_strategy_with_ml(opt_results_df) # Use original name
+                best_ml_strategy = self.find_best_strategy_with_ml(opt_results_df)
                 
                 if best_ml_strategy is None:
-                    self.log("ML model could not determine a best Trend Following strategy. Resetting best_params.", 'error', to_file=True, filename=BACKTEST_LOG_FILE)
-                    with self.params_lock:
-                        self.best_params.clear()
-                    return # Exit without setting best_params
+                    self.log("ML model failed.", 'error', to_file=True, filename=BACKTEST_LOG_FILE)
+                    with self.params_lock: self.best_params.clear()
+                    return
                 
                 new_best_params = {
                     'strategy': 'Trend Following',
                     'ema_window': int(best_ml_strategy['EMA_Window']),
                     'rsi_window': int(best_ml_strategy['RSI_Window']),
-                    'rsi_overbought': int(best_ml_strategy['RSI_Overbought']), # Corrected access
-                    'rsi_oversold': int(best_ml_strategy['RSI_Oversold']), # Corrected access
+                    'rsi_overbought': int(best_ml_strategy['RSI_Overbought']),
+                    'rsi_oversold': int(best_ml_strategy['RSI_Oversold']),
                     'macd_fast': int(best_ml_strategy['MACD_Fast']),
                     'macd_slow': int(best_ml_strategy['MACD_Slow']),
                     'macd_signal': int(best_ml_strategy['MACD_Signal'])
@@ -384,19 +399,9 @@ class TradingBotEngine:
                     self.best_params.clear()
                     self.best_params.update(new_best_params)
                 
-                self.ml_strategy_results = best_ml_strategy # Store ML results directly
-                log_message_tf = ("\n" + "="*50 + "\n--- TREND FOLLOWING OPTIMIZATION COMPLETE ---\n" +
-                              f"ML Selected Strategy Score: {best_ml_strategy['ML_Score']:.4f}\n" +
-                              f"  - Net Profit: ${best_ml_strategy['Net Profit']:.2f}\n" +
-                              f"  - Win Rate: {best_ml_strategy['Win Rate']:.2f}%\n" +
-                              f"  - Max Loss Streak: {best_ml_strategy['Max Loss Streak']}\n" +
-                              f"  - Profit Factor: {best_ml_strategy['Profit Factor']}\n" +
-                              f"NEW PARAMS FOUND: {new_best_params}\n" + "="*50 + "\n")
-                self.log(log_message_tf, 'info', to_file=True, filename=BACKTEST_LOG_FILE) # Log summary to file
+                self.ml_strategy_results = best_ml_strategy
 
-                # Log detailed backtest trades for the best strategy
-                for trade_log_entry in best_ml_strategy['Detailed Trades']:
-                    self.log(json.dumps(trade_log_entry), 'debug', to_file=True, filename=BACKTEST_LOG_FILE)
+                self.log(f"NEW PARAMS FOUND: {new_best_params}", 'info', to_file=True, filename=BACKTEST_LOG_FILE)
                     
                 self.emit('params_update', {'best_params': new_best_params, 'ml_strategy_results': best_ml_strategy})
                 self._save_optimized_params(new_best_params, best_ml_strategy)
@@ -406,7 +411,7 @@ class TradingBotEngine:
         except Exception as e:
             self.log(f'Optimization error: {str(e)}', 'error', to_file=True, filename=BACKTEST_LOG_FILE)
             with self.params_lock:
-                self.best_params.clear() # Clear params on error
+                self.best_params.clear()
     
     def calculate_indicators_mean_reversion(self, df, macd_fast, macd_slow, macd_signal, bb_window, bb_std):
         df_copy = df.copy() # Make an explicit copy to avoid SettingWithCopyWarning
