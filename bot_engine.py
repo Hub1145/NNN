@@ -11,8 +11,6 @@ from collections import deque
 import os # Added for file path operations
 
 OPTIMIZED_PARAMS_DB_FILE = 'optimized_params_db.json'
-TRADE_LOG_FILE = 'trade_log.txt' # New: Define trade log file
-BACKTEST_LOG_FILE = 'backtest_log.txt' # New: Define backtest log file
 
 class TradingBotEngine:
     def __init__(self, config_path, emit_callback):
@@ -52,7 +50,7 @@ class TradingBotEngine:
         self.optimization_scheduler_thread = None
         self.last_optimization_date = None # To track when optimization last ran for the current context
         
-    def log(self, message, level='info', to_file=False, filename=None): # Added filename parameter
+    def log(self, message, level='info', to_file=False, filename=None): # to_file and filename are now ignored
         timestamp = datetime.now().strftime('%H:%M:%S')
         log_entry = {'timestamp': timestamp, 'message': message, 'level': level}
         self.console_logs.append(log_entry)
@@ -64,13 +62,7 @@ class TradingBotEngine:
             logging.warning(message)
         elif level == 'error':
             logging.error(message)
-
-        if to_file and filename: # New: Write to specified file if to_file is True and filename is provided
-            try:
-                with open(filename, 'a') as f:
-                    f.write(f"[{timestamp}] {level.upper()}: {message}\n")
-            except Exception as e:
-                logging.error(f"Error writing to log file {filename}: {e}")
+        # Removed file logging logic
     
     def update_stats(self, profit):
         if profit > 0:
@@ -261,17 +253,17 @@ class TradingBotEngine:
                                         })
                 
                 if not opt_results:
-                    self.log("Mean Reversion optimization found no valid strategies. Resetting best_params.", 'error', to_file=True, filename=BACKTEST_LOG_FILE)
+                    self.log("Mean Reversion optimization found no valid strategies. Resetting best_params.", 'error')
                     with self.params_lock:
                         self.best_params.clear()
                     return # Exit without setting best_params
                 
-                self.log("Mean Reversion optimization runs complete. Applying ML model to find the best strategy...", 'info', to_file=True, filename=BACKTEST_LOG_FILE)
+                self.log("Mean Reversion optimization runs complete. Applying ML model to find the best strategy...", 'info')
                 opt_results_df = pd.DataFrame(opt_results)
                 best_ml_strategy = self.find_best_strategy_with_ml(opt_results_df) # Use original name
                 
                 if best_ml_strategy is None:
-                    self.log("ML model could not determine a best Mean Reversion strategy. Resetting best_params.", 'error', to_file=True, filename=BACKTEST_LOG_FILE)
+                    self.log("ML model could not determine a best Mean Reversion strategy. Resetting best_params.", 'error')
                     with self.params_lock:
                         self.best_params.clear()
                     return # Exit without setting best_params
@@ -297,11 +289,11 @@ class TradingBotEngine:
                               f"  - Max Loss Streak: {best_ml_strategy['Max Loss Streak']}\n" +
                               f"  - Profit Factor: {best_ml_strategy['Profit Factor']}\n" +
                               f"NEW PARAMS FOUND: {new_best_params}\n" + "="*50 + "\n")
-                self.log(log_message_mr, 'info', to_file=True, filename=BACKTEST_LOG_FILE) # Log summary to file
+                self.log(log_message_mr, 'info')
                 
                 # Log detailed backtest trades for the best strategy
                 for trade_log_entry in best_ml_strategy['Detailed Trades']:
-                    self.log(json.dumps(trade_log_entry), 'debug', to_file=True, filename=BACKTEST_LOG_FILE)
+                    self.log(json.dumps(trade_log_entry), 'debug')
 
                 self.emit('params_update', {'best_params': new_best_params, 'ml_strategy_results': best_ml_strategy})
                 self._save_optimized_params(new_best_params, best_ml_strategy)
@@ -329,7 +321,7 @@ class TradingBotEngine:
                                     continue
                                 for macd_sig in range(strategy_ranges['macd_signal_min'], strategy_ranges['macd_signal_max'] + 1, strategy_ranges['macd_signal_step']):
                                     if self.stop_event.is_set():
-                                        self.log('Optimization aborted by stop signal.', 'warning', to_file=True, filename=BACKTEST_LOG_FILE)
+                                        self.log('Optimization aborted by stop signal.', 'warning')
                                         return
                                     current_run += 1
                                     df_processed = base_df.copy()
@@ -354,17 +346,17 @@ class TradingBotEngine:
                                         })
                 
                 if not opt_results:
-                    self.log("Trend Following optimization found no valid strategies. Resetting best_params.", 'error', to_file=True, filename=BACKTEST_LOG_FILE)
+                    self.log("Trend Following optimization found no valid strategies. Resetting best_params.", 'error')
                     with self.params_lock:
                         self.best_params.clear()
                     return # Exit without setting best_params
                 
-                self.log("Trend Following optimization runs complete. Applying ML model to find the best strategy...", 'info', to_file=True, filename=BACKTEST_LOG_FILE)
+                self.log("Trend Following optimization runs complete. Applying ML model to find the best strategy...", 'info')
                 opt_results_df = pd.DataFrame(opt_results)
                 best_ml_strategy = self.find_best_strategy_with_ml(opt_results_df) # Use original name
                 
                 if best_ml_strategy is None:
-                    self.log("ML model could not determine a best Trend Following strategy. Resetting best_params.", 'error', to_file=True, filename=BACKTEST_LOG_FILE)
+                    self.log("ML model could not determine a best Trend Following strategy. Resetting best_params.", 'error')
                     with self.params_lock:
                         self.best_params.clear()
                     return # Exit without setting best_params
@@ -392,19 +384,17 @@ class TradingBotEngine:
                               f"  - Max Loss Streak: {best_ml_strategy['Max Loss Streak']}\n" +
                               f"  - Profit Factor: {best_ml_strategy['Profit Factor']}\n" +
                               f"NEW PARAMS FOUND: {new_best_params}\n" + "="*50 + "\n")
-                self.log(log_message_tf, 'info', to_file=True, filename=BACKTEST_LOG_FILE) # Log summary to file
+                self.log(log_message_tf, 'info')
 
-                # Log detailed backtest trades for the best strategy
-                for trade_log_entry in best_ml_strategy['Detailed Trades']:
-                    self.log(json.dumps(trade_log_entry), 'debug', to_file=True, filename=BACKTEST_LOG_FILE)
-                    
+                # Removed logging of detailed backtest trades
+                
                 self.emit('params_update', {'best_params': new_best_params, 'ml_strategy_results': best_ml_strategy})
                 self._save_optimized_params(new_best_params, best_ml_strategy)
             else:
-                self.log(f"Unknown strategy: {self.config['active_strategy']}", 'error', to_file=True, filename=BACKTEST_LOG_FILE)
+                self.log(f"Unknown strategy: {self.config['active_strategy']}", 'error')
         
         except Exception as e:
-            self.log(f'Optimization error: {str(e)}', 'error', to_file=True, filename=BACKTEST_LOG_FILE)
+            self.log(f'Optimization error: {str(e)}', 'error')
             with self.params_lock:
                 self.best_params.clear() # Clear params on error
     
@@ -496,8 +486,7 @@ class TradingBotEngine:
         current_loss_streak, max_loss_streak = 0, 0
         total_profit, total_loss = 0.0, 0.0
         
-        # New: List to store detailed backtest trade logs
-        detailed_trade_logs = []
+        # Removed: List to store detailed backtest trade logs
 
         i = 0
         while i < len(df) - 1:
@@ -506,26 +495,17 @@ class TradingBotEngine:
                 base_stake = self.config['fixed_stake_amount'] if self.config['use_fixed_stake_amount'] else (balance * (self.config['trade_stake_percent'] / 100))
                 stake = (bt_last_stake * self.config['martingale_multiplier']) if (self.config['use_martingale'] and bt_last_trade_loss) else base_stake
                 
+                # Cap stake at max_stake_amount
+                stake = min(stake, self.config['max_stake_amount'])
+
                 if stake > balance or stake < 0.35: # 'balance' here still refers to the current simulated balance for comparison
                     i += 1
                     continue
                 
                 entry_candle = df.iloc[i]
-                entry_time = entry_candle.name.strftime('%Y-%m-%d %H:%M:%S') # Get timestamp from index
+                # Removed: entry_time and trade_open_log
                 entry_price = df.iloc[i + 1]['open'] # Entry price is open of next candle
                 trade_type = 'BUY' if signal == 1 else 'SELL'
-
-                trade_open_log = {
-                    'timestamp': entry_time,
-                    'type': trade_type,
-                    'action': 'ENTRY',
-                    'entry_price': round(entry_price, 4),
-                    'stake': round(stake, 2),
-                    'tp_percent': self.config['take_profit_percent'],
-                    'sl_percent': self.config['stop_loss_percent'],
-                    'result': 'OPEN'
-                }
-                detailed_trade_logs.append(trade_open_log)
 
                 if signal == 1:
                     tp_price = entry_price * (1 + self.config['take_profit_percent'] / 100)
@@ -535,12 +515,10 @@ class TradingBotEngine:
                     sl_price = entry_price * (1 + self.config['stop_loss_percent'] / 100)
                 
                 j = i
-                trade_closed_reason = 'UNKNOWN'
-                pnl = 0.0 # Initialize pnl for the trade
+                # Removed: trade_closed_reason, pnl initialization
                 for j in range(i + 1, len(df)):
                     candle = df.iloc[j]
-                    exit_time = candle.name.strftime('%Y-%m-%d %H:%M:%S')
-                    exit_price = 0.0 # Will be actual exit price
+                    # Removed: exit_time, exit_price initialization
 
                     if signal == 1: # BUY trade
                         if candle['high'] >= tp_price:
@@ -551,8 +529,7 @@ class TradingBotEngine:
                             bt_last_trade_loss = False
                             current_win_streak += 1
                             current_loss_streak = 0
-                            trade_closed_reason = 'TP'
-                            exit_price = tp_price
+                            # Removed: trade_closed_reason, exit_price
                             break
                         if candle['low'] <= sl_price:
                             pnl = (sl_price - entry_price) / entry_price * stake * self.config['multiplier']
@@ -562,8 +539,7 @@ class TradingBotEngine:
                             bt_last_trade_loss = True
                             current_loss_streak += 1
                             current_win_streak = 0
-                            trade_closed_reason = 'SL'
-                            exit_price = sl_price
+                            # Removed: trade_closed_reason, exit_price
                             break
                     else: # SELL trade
                         if candle['low'] <= tp_price:
@@ -574,8 +550,7 @@ class TradingBotEngine:
                             bt_last_trade_loss = False
                             current_win_streak += 1
                             current_loss_streak = 0
-                            trade_closed_reason = 'TP'
-                            exit_price = tp_price
+                            # Removed: trade_closed_reason, exit_price
                             break
                         if candle['high'] >= sl_price:
                             pnl = (entry_price - sl_price) / entry_price * stake * self.config['multiplier']
@@ -585,8 +560,7 @@ class TradingBotEngine:
                             bt_last_trade_loss = True
                             current_loss_streak += 1
                             current_win_streak = 0
-                            trade_closed_reason = 'SL'
-                            exit_price = sl_price
+                            # Removed: trade_closed_reason, exit_price
                             break
                     
                     if candle['Signal'] == -signal: # Reversal signal, close trade
@@ -610,19 +584,10 @@ class TradingBotEngine:
                             bt_last_trade_loss = False
                             current_win_streak += 1
                             current_loss_streak = 0
-                        trade_closed_reason = 'REVERSAL'
-                        exit_price = close_price
+                        # Removed: trade_closed_reason, exit_price
                         break
                 
-                trade_close_log = {
-                    'timestamp': exit_time,
-                    'type': trade_type,
-                    'action': 'EXIT',
-                    'exit_price': round(exit_price, 4),
-                    'pnl': round(pnl, 2), # PnL for this specific trade
-                    'reason': trade_closed_reason
-                }
-                detailed_trade_logs.append(trade_close_log)
+                # Removed: trade_close_log and append to detailed_trade_logs
 
                 i = j + 1
                 bt_last_stake = stake
@@ -641,8 +606,8 @@ class TradingBotEngine:
             'Win Rate': win_rate,
             'Max Win Streak': max_win_streak,
             'Max Loss Streak': max_loss_streak,
-            'Profit Factor': round(profit_factor, 2),
-            'Detailed Trades': detailed_trade_logs # New: Return detailed trade logs
+            'Profit Factor': round(profit_factor, 2)
+            # Removed: 'Detailed Trades'
         }
     
     def find_best_strategy_with_ml(self, opt_results_df):
@@ -823,7 +788,7 @@ class TradingBotEngine:
                 rsi_oversold=active_params['rsi_oversold'] # Corrected access
             )
         else:
-            self.log(f"Unknown active strategy: {active_params['strategy']}", 'error', to_file=True, filename=BACKTEST_LOG_FILE)
+            self.log(f"Unknown active strategy: {active_params['strategy']}", 'error')
             return
         
         if len(df_indicators) < 1: # Need at least one closed candle for indicators
@@ -950,7 +915,7 @@ class TradingBotEngine:
             f'{trade_type} trade {contract_id} opened with stake ${stake_amount:.2f}. '
             f'Awaiting entry spot price for TP/SL.'
         )
-        self.log(trade_log_message, 'info', to_file=True, filename=TRADE_LOG_FILE) # Log to file
+        self.log(trade_log_message, 'info')
         self.emit('trades_update', {'trades': self.open_trades})
         
         # Explicitly subscribe to updates for this contract to get entry_tick_quote
@@ -973,7 +938,7 @@ class TradingBotEngine:
         if trade['entry_spot_price'] is None:
             entry_spot_price = contract_info.get('entry_spot') or contract_info.get('entry_tick')
             if entry_spot_price is None:
-                self.log(f"Trade {contract_id}: entry_spot or entry_tick is None in this update. Waiting for full entry.", 'debug', to_file=True, filename=TRADE_LOG_FILE)
+                self.log(f"Trade {contract_id}: entry_spot or entry_tick is None in this update. Waiting for full entry.", 'debug')
             else:
                 entry_spot_price = float(entry_spot_price)
                 trade_type = trade['type']
@@ -988,7 +953,7 @@ class TradingBotEngine:
                 trade['entry_spot_price'] = entry_spot_price
                 trade['tp_price'] = tp_price
                 trade['sl_price'] = sl_price
-                self.log(f'Trade {contract_id} entry confirmed at {entry_spot_price:.4f}. TP: {tp_price:.4f}, SL: {sl_price:.4f}', 'info', to_file=True, filename=TRADE_LOG_FILE)
+                self.log(f'Trade {contract_id} entry confirmed at {entry_spot_price:.4f}. TP: {tp_price:.4f}, SL: {sl_price:.4f}', 'info')
                 self.emit('trades_update', {'trades': self.open_trades})
 
         # Check for trade closure from proposal_open_contract
@@ -1018,21 +983,21 @@ class TradingBotEngine:
                 f"API Profit: ${profit:.2f}, " # Differentiate API profit
                 f"Calculated PnL: ${calculated_pnl:.2f}" # Add calculated PnL
             )
-            self.log(trade_log_message, 'info', to_file=True, filename=TRADE_LOG_FILE) # Log to file
+            self.log(trade_log_message, 'info')
             
             if self.config['use_martingale']:
                 if profit < 0:
                     self.last_trade_was_loss = True
-                    self.log('Trade was a LOSS. Martingale will apply on next trade.', 'warning', to_file=True, filename=TRADE_LOG_FILE) # Log to file
+                    self.log('Trade was a LOSS. Martingale will apply on next trade.', 'warning')
                 else:
                     self.last_trade_was_loss = False
-                    self.log('Trade was a WIN. Stake reset.', 'info', to_file=True, filename=TRADE_LOG_FILE) # Log to file
+                    self.log('Trade was a WIN. Stake reset.', 'info')
             
             self.update_stats(profit)
             self.emit('trades_update', {'trades': self.open_trades})
             self.emit('stats_update', self.get_stats())
         else:
-            self.log(f'Attempted to close unknown trade {contract_id}', 'warning', to_file=True, filename=TRADE_LOG_FILE) # Log to file
+            self.log(f'Attempted to close unknown trade {contract_id}', 'warning')
 
     def handle_trade_update(self, ws, data):
         # This method will now primarily handle the final 'sell' message confirmation
@@ -1042,12 +1007,12 @@ class TradingBotEngine:
             contract_id = sell_info.get('contract_id')
             profit = float(sell_info.get('profit', 0.0))
             exit_price = float(sell_info.get('sell_price', 0.0)) # Get actual exit price from sell message
-            self.log(f"Final sell confirmation received for trade {contract_id}. Profit: ${profit:.2f}", 'info', to_file=True, filename=TRADE_LOG_FILE)
+            self.log(f"Final sell confirmation received for trade {contract_id}. Profit: ${profit:.2f}", 'info')
             # The trade should ideally already be removed by handle_proposal_open_contract
             # But as a fallback, ensure it's removed if still present and update stats
             self.handle_trade_closed(contract_id, profit, exit_price) # Pass exit_price
         else:
-            self.log(f"Received unexpected trade update: {data}", 'warning', to_file=True, filename=TRADE_LOG_FILE)
+            self.log(f"Received unexpected trade update: {data}", 'warning')
         
     def _get_config_context_key(self):
         """Generates a unique key for the current configuration context."""
@@ -1071,15 +1036,13 @@ class TradingBotEngine:
 
             with open(OPTIMIZED_PARAMS_DB_FILE, 'w') as f:
                 json.dump(all_optimized_params, f, indent=2)
-            # Create a copy of ml_results and remove 'Detailed Trades' before saving
-            ml_results_to_save = ml_results.copy()
-            if 'Detailed Trades' in ml_results_to_save:
-                del ml_results_to_save['Detailed Trades']
-
+            # The 'Detailed Trades' key is no longer part of ml_results
+            # as it's removed from backtest_strategy output.
+            # So, we can directly save ml_results.
             all_optimized_params[context_key] = {
                 'date': today_utc,
                 'params': params,
-                'ml_results': ml_results_to_save # Save the modified ml_results
+                'ml_results': ml_results
             }
 
             with open(OPTIMIZED_PARAMS_DB_FILE, 'w') as f:
