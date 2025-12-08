@@ -28,6 +28,10 @@ def save_config(config):
 def emit_to_client(event, data):
     socketio.emit(event, data)
 
+@app.route('/favicon.ico')
+def favicon():
+    return app.send_static_file('favicon.ico')
+
 @app.before_request
 def log_config_on_request():
     if request.path.startswith('/api/config'):
