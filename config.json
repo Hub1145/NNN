@@ -12,6 +12,7 @@
   "fixed_stake_amount": 1,
   "use_martingale": true,
   "martingale_multiplier": 1.5,
+  "max_stake_amount": 2000,
   "ml_weights": {
     "loss_streak": 0.2,
     "net_profit": 0.4,
@@ -44,8 +45,6 @@
     "rsi_window_min": 10,
     "rsi_window_max": 20,
     "rsi_window_step": 2,
-    "rsi_overbought_level": 70,
-    "rsi_oversold_level": 30,
     "macd_fast_min": 5,
     "macd_fast_max": 15,
     "macd_fast_step": 3,
