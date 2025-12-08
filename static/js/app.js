@@ -316,19 +316,19 @@ function updateOpenTrades(trades) {
             <div class="trade-details">
                 <div class="trade-detail-item">
                     <span class="trade-detail-label">Entry:</span>
-                    <span class="trade-detail-value">${trade.entry_spot_price.toFixed(4)}</span>
+                    <span class="trade-detail-value">${trade.entry_spot_price !== null ? trade.entry_spot_price.toFixed(4) : 'N/A'}</span>
                 </div>
                 <div class="trade-detail-item">
                     <span class="trade-detail-label">Stake:</span>
-                    <span class="trade-detail-value">$${trade.stake.toFixed(2)}</span>
+                    <span class="trade-detail-value">$${trade.stake !== null ? trade.stake.toFixed(2) : 'N/A'}</span>
                 </div>
                 <div class="trade-detail-item">
                     <span class="trade-detail-label">TP:</span>
-                    <span class="trade-detail-value text-success">${trade.tp_price.toFixed(4)}</span>
+                    <span class="trade-detail-value text-success">${trade.tp_price !== null ? trade.tp_price.toFixed(4) : 'N/A'}</span>
                 </div>
                 <div class="trade-detail-item">
                     <span class="trade-detail-label">SL:</span>
-                    <span class="trade-detail-value text-danger">${trade.sl_price.toFixed(4)}</span>
+                    <span class="trade-detail-value text-danger">${trade.sl_price !== null ? trade.sl_price.toFixed(4) : 'N/A'}</span>
                 </div>
             </div>
         </div>
