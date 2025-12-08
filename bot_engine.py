@@ -9,6 +9,7 @@ import ta
 import threading
 from collections import deque
 import os # Added for file path operations
+import gc
 
 OPTIMIZED_PARAMS_DB_FILE = 'optimized_params_db.json'
 TRADE_LOG_FILE = 'trade_log.txt' # New: Define trade log file
@@ -250,6 +251,10 @@ class TradingBotEngine:
                                     self.log(f"Mean Reversion Run {current_run}/{total_runs} | PnL: ${results['Net Profit']:.2f}, Trades: {results['Total Trades']}, WinRate: {results['Win Rate']:.1f}%, MaxLoss: {results['Max Loss Streak']}", 'info')
                                     
                                     if results['Total Trades'] > 20:
+                                        # Memory Optimization: Strip detailed trades from result before appending
+                                        result_summary = results.copy()
+                                        del result_summary['Detailed Trades']
+
                                         opt_results.append({
                                             'Strategy': 'Mean Reversion',
                                             'BB_Window': bb_w,
@@ -257,8 +262,13 @@ class TradingBotEngine:
                                             'MACD_Fast': macd_f,
                                             'MACD_Slow': macd_s,
                                             'MACD_Signal': macd_sig,
-                                            **results
+                                            **result_summary
                                         })
+
+                                    # Memory Optimization: Force garbage collection
+                                    del df_processed
+                                    del df_signals
+                                    gc.collect()
                 
                 if not opt_results:
                     self.log("Mean Reversion optimization found no valid strategies. Resetting best_params.", 'error', to_file=True, filename=BACKTEST_LOG_FILE)
@@ -341,6 +351,10 @@ class TradingBotEngine:
                                     self.log(f"Trend Following Run {current_run}/{total_runs} | PnL: ${results['Net Profit']:.2f}, Trades: {results['Total Trades']}, WinRate: {results['Win Rate']:.1f}%, MaxLoss: {results['Max Loss Streak']}", 'info')
                                     
                                     if results['Total Trades'] > 20:
+                                        # Memory Optimization: Strip detailed trades from result before appending
+                                        result_summary = results.copy()
+                                        del result_summary['Detailed Trades']
+
                                         opt_results.append({
                                             'Strategy': 'Trend Following',
                                             'EMA_Window': ema_w,
@@ -350,8 +364,13 @@ class TradingBotEngine:
                                             'MACD_Fast': macd_f,
                                             'MACD_Slow': macd_s,
                                             'MACD_Signal': macd_sig,
-                                            **results # Include all results
+                                            **result_summary
                                         })
+
+                                    # Memory Optimization: Force garbage collection
+                                    del df_processed
+                                    del df_signals
+                                    gc.collect()
                 
                 if not opt_results:
                     self.log("Trend Following optimization found no valid strategies. Resetting best_params.", 'error', to_file=True, filename=BACKTEST_LOG_FILE)
@@ -543,19 +562,21 @@ class TradingBotEngine:
                     exit_price = 0.0 # Will be actual exit price
 
                     if signal == 1: # BUY trade
-                        if candle['high'] >= tp_price:
-                            pnl = (tp_price - entry_price) / entry_price * stake * self.config['multiplier']
-                            balance += pnl
-                            total_profit += pnl
-                            trades_won += 1
-                            bt_last_trade_loss = False
-                            current_win_streak += 1
-                            current_loss_streak = 0
-                            trade_closed_reason = 'TP'
-                            exit_price = tp_price
-                            break
-                        if candle['low'] <= sl_price:
+                        sl_hit = candle['low'] <= sl_price
+                        tp_hit = candle['high'] >= tp_price
+
+                        if sl_hit and tp_hit:
+                            # Ambiguous candle, use open/close to infer direction
+                            if candle['close'] > candle['open']: # Bullish candle, assume TP hit first
+                                tp_hit = True
+                                sl_hit = False
+                            else: # Bearish candle, assume SL hit first
+                                sl_hit = True
+                                tp_hit = False
+
+                        if sl_hit:
                             pnl = (sl_price - entry_price) / entry_price * stake * self.config['multiplier']
+                            pnl -= stake * (self.config.get('simulated_spread_percent', 0.0) / 100) # Apply spread deduction
                             balance += pnl # pnl is negative here
                             total_loss += abs(pnl)
                             trades_lost += 1
@@ -564,21 +585,35 @@ class TradingBotEngine:
                             current_win_streak = 0
                             trade_closed_reason = 'SL'
                             exit_price = sl_price
+                            break
+                        if tp_hit:
+                            pnl = (tp_price - entry_price) / entry_price * stake * self.config['multiplier']
+                            pnl -= stake * (self.config.get('simulated_spread_percent', 0.0) / 100) # Apply spread deduction
+                            balance += pnl
+                            total_profit += pnl
+                            trades_won += 1
+                            bt_last_trade_loss = False
+                            current_win_streak += 1
+                            current_loss_streak = 0
+                            trade_closed_reason = 'TP'
+                            exit_price = tp_price
                             break
                     else: # SELL trade
-                        if candle['low'] <= tp_price:
-                            pnl = (entry_price - tp_price) / entry_price * stake * self.config['multiplier']
-                            balance += pnl
-                            total_profit += pnl
-                            trades_won += 1
-                            bt_last_trade_loss = False
-                            current_win_streak += 1
-                            current_loss_streak = 0
-                            trade_closed_reason = 'TP'
-                            exit_price = tp_price
-                            break
-                        if candle['high'] >= sl_price:
+                        sl_hit = candle['high'] >= sl_price
+                        tp_hit = candle['low'] <= tp_price
+
+                        if sl_hit and tp_hit:
+                            # Ambiguous candle, use open/close to infer direction
+                            if candle['close'] < candle['open']: # Bearish candle, assume TP hit first
+                                tp_hit = True
+                                sl_hit = False
+                            else: # Bullish candle, assume SL hit first
+                                sl_hit = True
+                                tp_hit = False
+
+                        if sl_hit:
                             pnl = (entry_price - sl_price) / entry_price * stake * self.config['multiplier']
+                            pnl -= stake * (self.config.get('simulated_spread_percent', 0.0) / 100) # Apply spread deduction
                             balance += pnl # pnl is negative here
                             total_loss += abs(pnl)
                             trades_lost += 1
@@ -587,11 +622,24 @@ class TradingBotEngine:
                             current_win_streak = 0
                             trade_closed_reason = 'SL'
                             exit_price = sl_price
+                            break
+                        if tp_hit:
+                            pnl = (entry_price - tp_price) / entry_price * stake * self.config['multiplier']
+                            pnl -= stake * (self.config.get('simulated_spread_percent', 0.0) / 100) # Apply spread deduction
+                            balance += pnl
+                            total_profit += pnl
+                            trades_won += 1
+                            bt_last_trade_loss = False
+                            current_win_streak += 1
+                            current_loss_streak = 0
+                            trade_closed_reason = 'TP'
+                            exit_price = tp_price
                             break
                     
                     if candle['Signal'] == -signal: # Reversal signal, close trade
                         close_price = candle['open']
                         pnl = (close_price - entry_price) / entry_price * stake * self.config['multiplier'] * signal
+                        pnl -= stake * (self.config.get('simulated_spread_percent', 0.0) / 100) # Apply spread deduction
                         
                         if pnl > 0:
                             total_profit += pnl
