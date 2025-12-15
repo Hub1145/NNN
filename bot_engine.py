@@ -80,7 +80,7 @@ class TradingBotEngine:
             self.session_stats['current_loss_streak'] += 1
             self.session_stats['current_win_streak'] = 0
             self.session_stats['max_loss_streak'] = max(
-                self.session_stats['max_loss_streak'], 
+                self.session_stats['max_loss_streak'],
                 self.session_stats['current_loss_streak']
             )
         
@@ -524,7 +524,6 @@ class TradingBotEngine:
                         if candle['high'] >= tp_price:
                             pnl = (tp_price - entry_price) / entry_price * stake * self.config['multiplier']
                             balance += pnl
-                            total_profit += pnl
                             trades_won += 1
                             bt_last_trade_loss = False
                             current_win_streak += 1
@@ -545,7 +544,6 @@ class TradingBotEngine:
                         if candle['low'] <= tp_price:
                             pnl = (entry_price - tp_price) / entry_price * stake * self.config['multiplier']
                             balance += pnl
-                            total_profit += pnl
                             trades_won += 1
                             bt_last_trade_loss = False
                             current_win_streak += 1
@@ -569,7 +567,7 @@ class TradingBotEngine:
                         
                         if pnl > 0:
                             total_profit += pnl
-                        else:
+                        elif pnl < 0:
                             total_loss += abs(pnl)
                         
                         balance += pnl
