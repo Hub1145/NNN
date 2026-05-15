@@ -5,8 +5,9 @@ import httpx
 import time
 import logging
 from datetime import datetime
-
 import os
+import base64
+import struct
 
 # Configuration
 PUMP_WS_URL = os.getenv("PUMP_WS_URL", "wss://pumpportal.fun/api/data")
@@ -161,8 +162,6 @@ class PumpScanner:
                                 # 8 bytes realSolReserves (u64)
                                 # 8 bytes tokenTotalSupply (u64)
                                 # 1 byte complete (bool)
-                                import base64
-                                import struct
                                 raw_data = base64.b64decode(res["data"][0])
                                 if len(raw_data) < 24:
                                     continue
