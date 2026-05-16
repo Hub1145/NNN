@@ -15,55 +15,50 @@ def analyze():
                 if event["event_type"] == "new_token":
                     tokens[mint] = {
                         "symbol": data["symbol"],
+                        "dev_stake_pct": data.get("dev_stake_pct", 0),
+                        "ticker_score": data.get("ticker_score", 0),
                         "has_website": data["has_website"],
                         "has_twitter": data["has_twitter"],
-                        "has_telegram": data["has_telegram"],
                         "initial_price": data["initial_price"],
                         "max_gain": 0.0,
-                        "v_sol": data.get("v_sol", 0)
+                        "max_velocity": 0.0
                     }
-                elif event["event_type"] == "high_gain":
+                elif event["event_type"] == "performance_alert":
                     if mint in tokens:
                         tokens[mint]["max_gain"] = max(tokens[mint]["max_gain"], data["gain"])
+                        tokens[mint]["max_velocity"] = max(tokens[mint]["max_velocity"], data.get("velocity", 0))
     except FileNotFoundError:
         print("token_data.jsonl not found.")
         return
 
     df = pd.DataFrame.from_dict(tokens, orient='index')
-
     if df.empty:
         print("No tokens found in log.")
         return
 
-    print("--- Token Analysis Summary ---")
+    print("--- Enhanced Token Analysis Summary ---")
     print(f"Total tokens scanned: {len(df)}")
 
     high_performers = df[df['max_gain'] >= 100]
     print(f"Tokens with 100%+ gain: {len(high_performers)}")
 
-    print("\n--- Correlation Analysis ---")
+    print("\n--- Developer Holding Analysis ---")
+    print(f"Avg Dev Stake (All): {df['dev_stake_pct'].mean():.2f}%")
+    print(f"Avg Dev Stake (High Performers): {high_performers['dev_stake_pct'].mean():.2f}%")
 
-    metrics = ['has_website', 'has_twitter', 'has_telegram']
-    for metric in metrics:
-        total_with_metric = df[df[metric]].shape[0]
-        high_with_metric = high_performers[high_performers[metric]].shape[0]
+    print("\n--- Ticker Score Analysis ---")
+    print(f"Avg Ticker Score (All): {df['ticker_score'].mean():.2f}")
+    print(f"Avg Ticker Score (High Performers): {high_performers['ticker_score'].mean():.2f}")
 
-        rate = (high_with_metric / total_with_metric * 100) if total_with_metric > 0 else 0
-        print(f"{metric}: {total_with_metric} tokens total, {high_with_metric} were high performers ({rate:.2f}% success rate)")
+    print("\n--- Price Velocity Analysis ---")
+    high_velocity_tokens = df[df['max_velocity'] > 0.005]
+    print(f"Tokens with high velocity (>0.5%/s): {len(high_velocity_tokens)}")
+    success_in_high_velocity = high_velocity_tokens[high_velocity_tokens['max_gain'] >= 100]
+    velocity_success_rate = (len(success_in_high_velocity) / len(high_velocity_tokens) * 100) if len(high_velocity_tokens) > 0 else 0
+    print(f"Success rate among high velocity tokens: {velocity_success_rate:.2f}%")
 
-    # Analyze without socials
-    no_socials = df[~(df['has_website'] | df['has_twitter'] | df['has_telegram'])]
-    high_no_socials = high_performers[~(high_performers['has_website'] | high_performers['has_twitter'] | high_performers['has_telegram'])]
-    rate_no_socials = (len(high_no_socials) / len(no_socials) * 100) if len(no_socials) > 0 else 0
-    print(f"No Socials: {len(no_socials)} tokens total, {len(high_no_socials)} were high performers ({rate_no_socials:.2f}% success rate)")
-
-    print("\n--- Liquidity Analysis ---")
-    # v_sol is usually around 30 for pump.fun tokens
-    print(f"Average v_sol for all: {df['v_sol'].mean():.2f}")
-    print(f"Average v_sol for high performers: {high_performers['v_sol'].mean():.2f}")
-
-    print("\n--- Top Performers ---")
-    print(high_performers[['symbol', 'max_gain', 'has_website', 'has_twitter', 'has_telegram']].sort_values(by='max_gain', ascending=False))
+    print("\n--- Top Performers Details ---")
+    print(high_performers[['symbol', 'max_gain', 'dev_stake_pct', 'ticker_score', 'max_velocity']].sort_values(by='max_gain', ascending=False))
 
 if __name__ == "__main__":
     analyze()
