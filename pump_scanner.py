@@ -12,6 +12,9 @@ import re
 from collections import deque, Counter
 from pytrends.request import TrendReq
 
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
 # Configuration
 PUMP_WS_URL = os.getenv("PUMP_WS_URL", "wss://pumpportal.fun/api/data")
 HELIUS_API_KEY = os.getenv("HELIUS_API_KEY")
@@ -19,9 +22,6 @@ if not HELIUS_API_KEY:
     logger.error("HELIUS_API_KEY not found in environment variables.")
 HELIUS_RPC_URL = f"https://mainnet.helius-rpc.com/?api-key={HELIUS_API_KEY}"
 LOG_FILE = os.getenv("PUMP_LOG_FILE", "token_data.jsonl")
-
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
 
 EVERGREEN_BOOSTERS = {
     "pepe", "doge", "shib", "wojak", "chad", "based", "giga",
