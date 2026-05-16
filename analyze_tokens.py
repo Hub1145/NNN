@@ -46,6 +46,12 @@ def analyze():
     print(f"Avg Dev Stake (All): {df['dev_stake_pct'].mean():.2f}%")
     print(f"Avg Dev Stake (High Performers): {high_performers['dev_stake_pct'].mean():.2f}%")
 
+    low_dev_stake = df[df['dev_stake_pct'] < 2.0]
+    high_performers_low_dev = low_dev_stake[low_dev_stake['max_gain'] >= 100]
+    success_rate_low_dev = (len(high_performers_low_dev) / len(low_dev_stake) * 100) if len(low_dev_stake) > 0 else 0
+    print(f"Tokens with <2% Dev Stake: {len(low_dev_stake)}")
+    print(f"Success rate among <2% Dev Stake tokens: {success_rate_low_dev:.2f}%")
+
     print("\n--- Ticker Score Analysis ---")
     print(f"Avg Ticker Score (All): {df['ticker_score'].mean():.2f}")
     print(f"Avg Ticker Score (High Performers): {high_performers['ticker_score'].mean():.2f}")

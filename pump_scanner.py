@@ -9,7 +9,8 @@ import os
 import base64
 import struct
 import re
-from collections import deque
+from collections import deque, Counter
+from pytrends.request import TrendReq
 
 # Configuration
 PUMP_WS_URL = os.getenv("PUMP_WS_URL", "wss://pumpportal.fun/api/data")
@@ -33,9 +34,13 @@ EVERGREEN_BOOSTERS = {
 class PumpScanner:
     def __init__(self):
         self.watchlist = {} # mint -> token_data
-        self.http_client = httpx.AsyncClient(timeout=10.0)
+        self.http_client = httpx.AsyncClient(timeout=10.0, headers={"User-Agent": "pump-scanner/1.0"})
         self.trending_words = set()
         self.dev_history = {} # traderPublicKey -> list of launched mints
+        try:
+            self.pytrends = TrendReq(hl='en-US', tz=0)
+        except:
+            self.pytrends = None
 
     async def fetch_trending_dex(self):
         """Fetch trending tokens from DexScreener to extract keywords."""
@@ -48,10 +53,59 @@ class PumpScanner:
                     desc = item.get("description", "").lower()
                     words = re.findall(r'\w+', desc)
                     new_words.update([w for w in words if len(w) > 3])
-                self.trending_words = new_words
-                logger.info(f"Refreshed trending words: {len(self.trending_words)} keywords")
+                return new_words
         except Exception as e:
             logger.error(f"Error fetching trending from DexScreener: {e}")
+        return set()
+
+    async def fetch_trending_coingecko(self):
+        try:
+            response = await self.http_client.get("https://api.coingecko.com/api/v3/search/trending")
+            if response.status_code == 200:
+                data = response.json()
+                new_words = set()
+                for coin in data.get("coins", []):
+                    name = coin["item"]["name"].lower()
+                    symbol = coin["item"]["symbol"].lower()
+                    new_words.update(re.findall(r'\w+', name + " " + symbol))
+                return new_words
+        except Exception as e:
+            logger.error(f"Error fetching trending from CoinGecko: {e}")
+        return set()
+
+    async def fetch_trending_reddit(self):
+        subreddits = ["solana", "memecoins", "cryptocurrency"]
+        all_words = []
+        try:
+            for sub in subreddits:
+                url = f"https://www.reddit.com/r/{sub}/hot.json?limit=25"
+                response = await self.http_client.get(url)
+                if response.status_code == 200:
+                    posts = response.json()["data"]["children"]
+                    for post in posts:
+                        title = post["data"]["title"].lower()
+                        all_words.extend(re.findall(r'\b[a-z]{3,12}\b', title))
+
+            stopwords = {"the", "and", "for", "with", "this", "that", "are", "not", "solana", "pump", "crypto"}
+            counts = Counter(w for w in all_words if w not in stopwords)
+            return set(word for word, _ in counts.most_common(30))
+        except Exception as e:
+            logger.error(f"Error fetching trending from Reddit: {e}")
+        return set()
+
+    def fetch_trending_google(self):
+        if not self.pytrends: return set()
+        try:
+            df = self.pytrends.realtime_trending_searches(pn='US')
+            if not df.empty:
+                titles = df['title'].str.lower().tolist()
+                new_words = set()
+                for t in titles:
+                    new_words.update(re.findall(r'\w+', t))
+                return new_words
+        except Exception as e:
+            logger.debug(f"Google Trends error (likely rate limit): {e}")
+        return set()
 
     async def fetch_metadata(self, uri):
         if not uri:
@@ -221,8 +275,17 @@ class PumpScanner:
 
     async def trend_loop(self):
         while True:
-            await self.fetch_trending_dex()
-            await asyncio.sleep(300) # Every 5 min
+            logger.info("Refreshing trending keywords from all sources...")
+            dex = await self.fetch_trending_dex()
+            cg = await self.fetch_trending_coingecko()
+            reddit = await self.fetch_trending_reddit()
+            # Run google sync in thread to not block event loop
+            loop = asyncio.get_event_loop()
+            google = await loop.run_in_executor(None, self.fetch_trending_google)
+
+            self.trending_words = dex | cg | reddit | google
+            logger.info(f"Unified trending words: {len(self.trending_words)} keywords")
+            await asyncio.sleep(600) # Every 10 min
 
     async def run(self, duration_hours=1):
         logger.info(f"Starting Enhanced Pump Scanner for {duration_hours} hours...")
